@@ -244,8 +244,12 @@ int main(void)
 
 /*-----------------------------------------------------------*/
 
-void release_dd_task(){
-	//xQueueSend();
+//Creates the dd_task struct
+void release_dd_task(struct dd_task new_task){
+	xQueueSend(xQueue_New_Tasks, dd_task, 1000);
+
+	//absolute deadline?
+	//release time? 
 }
 
 static void dds_task(void *pvParameters){
@@ -257,12 +261,13 @@ static void task1_timer_callback(TimerHandle_t xTimer){
 	portYIELD_FROM_ISR(xYieldRequired);
 }
 
+
 static void generator_task(void *pvParameters){
 	struct dd_task new_task;
 	TaskHandle_t *usd_task_handle;
 	xTaskCreate( usd_task, "User-Defined Task", configMINIMAL_STACK_SIZE, NULL, 1, usd_task_handle);
 	new_task.t_handle = *usd_task_handle;
-	release_dd_task();
+	release_dd_task(new_task);
 	vTaskSuspend(NULL);
 }
 
