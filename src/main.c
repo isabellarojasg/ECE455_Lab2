@@ -135,6 +135,7 @@ functionality.
 static void prvSetupHardware( void );
 
 enum task_type {PERIODIC, APERIODIC};
+enum message_type {NEW_TASK, COMPLETED_TASK, ACTIVE_LIST_REQ, COMP_LIST_REQ, OD_LIST_REQ};
 
 struct dd_task {
 	TaskHandle_t t_handle;
@@ -150,6 +151,11 @@ struct dd_task_list {
 	struct dd_task_list *next_task;
 };
 
+struct dds_message {
+	enum message_type type;
+	struct dd_task task;
+};
+
 /*
  * The queue send and receive tasks as described in the comments at the top of
  * this file.
@@ -163,14 +169,13 @@ static struct dd_task_list* get_completed_dd_task_list();
 static struct dd_task_list* get_overdue_dd_task_list();
 static void task1_timer_callback(TimerHandle_t xTimer);
 
+void listInsert(struct dd_task_list* head, struct dd_task new_task);
 void printList(struct dd_task_list *list);
 unsigned int getListLength(struct dd_task_list* list);
 
 TaskHandle_t generator_handle;
 
-QueueHandle_t xQueue_New_Tasks;
-QueueHandle_t xQueue_Completed_Tasks;
-QueueHandle_t xQueue_List_Requests;
+QueueHandle_t xQueue_DDS_Messages;
 QueueHandle_t xQueue_List_Response;
 
 TimerHandle_t xTimer_Task1_Generator;
@@ -192,23 +197,17 @@ int main(void)
 
 	/* Create the queue used by the queue send and queue receive tasks.
 	http://www.freertos.org/a00116.html */
-	xQueue_New_Tasks = xQueueCreate(mainQUEUE_LENGTH,	/* The number of items the queue can hold. */
+	xQueue_DDS_Messages = xQueueCreate(mainQUEUE_LENGTH,	/* The number of items the queue can hold. */
 									sizeof( uint16_t ) );	/* The size of each item the queue holds. */
-	xQueue_Completed_Tasks = xQueueCreate(mainQUEUE_LENGTH,	/* The number of items the queue can hold. */
-										sizeof( uint16_t ) );	/* The size of each item the queue holds. */
-	xQueue_List_Requests = xQueueCreate(mainQUEUE_LENGTH,	/* The number of items the queue can hold. */
-											sizeof( uint16_t ) );	/* The size of each item the queue holds. */
 	xQueue_List_Response = xQueueCreate(mainQUEUE_LENGTH,	/* The number of items the queue can hold. */
 												sizeof( uint16_t ) );	/* The size of each item the queue holds. */
 
 	/* Add to the registry, for the benefit of kernel aware debugging. */
-	vQueueAddToRegistry( xQueue_New_Tasks, "New Tasks Queue" );	//holds new tasks created by generator for the DDS to schedule
-	vQueueAddToRegistry( xQueue_Completed_Tasks, "Completed Tasks Queue" );	//holds tasks that have been completed for the DDS to move out of the active list
-	vQueueAddToRegistry( xQueue_List_Requests, "List Request Queue" );	//holds requests for copies of the current states of the DDS task lists
+	vQueueAddToRegistry( xQueue_DDS_Messages, "DDS Message Queue" );	//holds messages for DDS to schedule
 	vQueueAddToRegistry( xQueue_List_Response, "List Response Queue" );	//holds copies of the current states of the DDS task lists
 
 	//TODO:set period of timer
-	xTimer_Task1_Generator = xTimerCreate("Task1 Generation Timer", 100, pdFALSE, 0, task1_timer_callback);
+	xTimer_Task1_Generator = xTimerCreate("Task1 Generation Timer", pdMS_TO_TICKS(500), pdFALSE, 0, task1_timer_callback);
 
 	xTaskCreate( dds_task, "Deadline Driven Scheduler", configMINIMAL_STACK_SIZE, NULL, 2, NULL);
 	xTaskCreate( generator_task, "Deadline-Driven Task Generator", configMINIMAL_STACK_SIZE, NULL, 3, generator_handle);
@@ -219,6 +218,7 @@ int main(void)
 
 	/* Start the tasks and timer running. */
 	vTaskStartScheduler();
+	xTimerStart(xTimer_Task1_Generator, portMAX_DELAY);
 
 	return 0;
 }
@@ -227,15 +227,50 @@ int main(void)
 
 //Creates the dd_task struct
 void release_dd_task(struct dd_task new_task){
-	xQueueSend(xQueue_New_Tasks, &new_task, 1000);
+	struct dds_message new_message;
+	new_message.type = NEW_TASK;
+	new_message.task = new_task;
+	xQueueSend(xQueue_DDS_Messages, &new_message, 1000);
+}
+
+void complete_dd_task(uint32_t task_id){
+
 }
 
 static void dds_task(void *pvParameters){
-	struct dd_task_list active_dd_tasks;
-	struct dd_task_list completed_dd_tasks;
-	struct dd_task_list overdue_dd_tasks;
+	struct dd_task_list* active_dd_tasks = NULL;
+	struct dd_task_list* completed_dd_tasks = NULL;
+	struct dd_task_list* overdue_dd_tasks = NULL;
+	struct dds_message message;
 
+	for(;;){
+		xQueueReceive(xQueue_DDS_Messages, &message, 1000); //check new_task queue
+		switch(message.type){
+		case NEW_TASK:
+			message.task.release_time = xTaskGetTickCount();	//assign release time
+			listInsert(active_dd_tasks, message.task);	//add to active task list
+			vTaskPrioritySet(active_dd_tasks, 1);
+			//sort active list and set priorities of user tasks
+			vTaskPrioritySet(active_dd_tasks, 2);
 
+			break;
+		case COMPLETED_TASK:
+			//assign completion time
+			//remove from active list
+			//add to completed list
+			//sort active list and set priorities of user tasks
+			break;
+		case ACTIVE_LIST_REQ:
+			break;
+		case COMP_LIST_REQ:
+			break;
+		case OD_LIST_REQ:
+			break;
+		default:
+			//error
+			printf("error\n");
+		}
+	}
 }
 
 static void task1_timer_callback(TimerHandle_t xTimer){
@@ -246,14 +281,14 @@ static void task1_timer_callback(TimerHandle_t xTimer){
 
 static void generator_task(void *pvParameters){
 	struct dd_task new_task;
-	TaskHandle_t *usd_task_handle;
+	TaskHandle_t* usd_task_handle = pvPortMalloc(sizeof(TaskHandle_t));
 	uint32_t curr_task_id = 0;
 	uint32_t task_period = pdMS_TO_TICKS(500);
 
 	for(;;){
-		xTaskCreate( usd_task, "User-Defined Task", configMINIMAL_STACK_SIZE, NULL, 1, usd_task_handle);
-		new_task.t_handle = *usd_task_handle;
 		new_task.task_id = curr_task_id++;
+		xTaskCreate( usd_task, "User-Defined Task", configMINIMAL_STACK_SIZE, (void *) new_task.task_id, 1, usd_task_handle);
+		new_task.t_handle = *usd_task_handle;
 		new_task.absolute_deadline = xTaskGetTickCount() + task_period;
 		release_dd_task(new_task);
 		vTaskSuspend(NULL);
@@ -278,26 +313,28 @@ static void monitor_task(void *pvParameters){
 }
 
 static void usd_task(void *pvParameters){
-
+	for(int i = 0; i < pdMS_TO_TICKS(500); i++);
+	printf("done usdt\n");
+	complete_dd_task((uint32_t) pvParameters);
 }
 
 static struct dd_task_list* get_active_dd_task_list(){
 	struct dd_task_list* listCopy;
-	xQueueSend(xQueue_List_Requests, &active_list, 1000);
+	xQueueSend(xQueue_DDS_Messages, &active_list, 1000);
 	xQueueReceive(xQueue_List_Response, &listCopy, 1000);
 	return listCopy;
 }
 
 static struct dd_task_list* get_completed_dd_task_list(){
 	struct dd_task_list* listCopy;
-	xQueueSend(xQueue_List_Requests, &completed_list, 1000);
+	xQueueSend(xQueue_DDS_Messages, &completed_list, 1000);
 	xQueueReceive(xQueue_List_Response, &listCopy, 1000);
 	return listCopy;
 }
 
 static struct dd_task_list* get_overdue_dd_task_list(){
 	struct dd_task_list* listCopy;
-	xQueueSend(xQueue_List_Requests, &overdue_list, 1000);
+	xQueueSend(xQueue_DDS_Messages, &overdue_list, 1000);
 	xQueueReceive(xQueue_List_Response, &listCopy, 1000);
 	return listCopy;
 }
@@ -318,6 +355,25 @@ unsigned int getListLength(struct dd_task_list *list){
 		curr_task = curr_task->next_task;
 	}
 }
+
+
+//insert front
+void listInsert(struct dd_task_list* head, struct dd_task new_task){
+	if (head == NULL) {
+		head = pvPortMalloc(sizeof(struct dd_task_list));
+		head->task = new_task;
+		head->next_task = NULL;
+		return;
+	}
+	struct dd_task_list* temp = pvPortMalloc(sizeof(struct dd_task_list));
+	temp->task = head->task;
+	temp->next_task = head->next_task;
+	head->task = new_task;
+	head->next_task = temp;
+}
+
+//implement log(n) mergesort
+
 /*-----------------------------------------------------------*/
 
 void vApplicationMallocFailedHook( void )
