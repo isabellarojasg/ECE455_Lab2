@@ -251,6 +251,15 @@ static void dds_task(void *pvParameters){
 			listInsert(active_dd_tasks, message.task);	//add to active task list
 			vTaskPrioritySet(active_dd_tasks, 1);
 			//sort active list and set priorities of user tasks
+
+
+
+
+
+
+
+
+
 			vTaskPrioritySet(active_dd_tasks, 2);
 
 			break;
@@ -373,6 +382,40 @@ void listInsert(struct dd_task_list* head, struct dd_task new_task){
 }
 
 //implement log(n) mergesort
+
+void sortTasksByDeadline(struct dd_task_list** active_dd_tasks_ptr) {
+    struct dd_task_list* active_dd_tasks = *active_dd_tasks_ptr;
+    struct dd_task_list* left_half;
+    struct dd_task_list* right_half;
+    int list_size = listLength(active_dd_tasks);
+ 
+    if (list_size <= 1) {
+        return;
+    }
+
+    int middle = list_size / 2;
+    struct dd_task_list* current = active_dd_tasks;
+    int i = 0;
+
+    // Split the list into two halves
+    while (current != NULL) {
+        if (i < middle) {
+            left_half = listInsert(left_half, current->task);
+        } else {
+            right_half = listInsert(right_half, current->task);
+        }
+        current = current->next;
+        i++;
+    }
+
+    // Recursively sort the two halves
+    sortTasksByDeadline(&left_half);
+    sortTasksByDeadline(&right_half);
+
+    // Merge the sorted halves
+    *active_dd_tasks_ptr = mergeByDeadline(left_half, right_half);
+}
+
 
 /*-----------------------------------------------------------*/
 
