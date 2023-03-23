@@ -381,9 +381,24 @@ void listInsert(struct dd_task_list* head, struct dd_task new_task){
 	head->next_task = temp;
 }
 
-//implement log(n) mergesort
+struct dd_task_list* mergeLists(struct dd_task_list* left_half, struct dd_task_list* right_half){
+	struct dd_task_list* result = NULL;
+	if (left_half == NULL){
+		return right_half;
+	} else if (right_half == NULL){
+		return left_half;
+	}
+	
+	if (left_half->task->deadline <= right_half->task->deadline){
+		
+	}else {
+		result = right_half;
+		result->next = mergeLists(left_half,right_half->next)
+	}
+	
+}
 
-void sortTasksByDeadline(struct dd_task_list** active_dd_tasks_ptr) {
+void mergeSortByDeadline(struct dd_task_list** active_dd_tasks_ptr) {
     struct dd_task_list* active_dd_tasks = *active_dd_tasks_ptr;
     struct dd_task_list* left_half;
     struct dd_task_list* right_half;
@@ -409,11 +424,11 @@ void sortTasksByDeadline(struct dd_task_list** active_dd_tasks_ptr) {
     }
 
     // Recursively sort the two halves
-    sortTasksByDeadline(&left_half);
-    sortTasksByDeadline(&right_half);
+    mergeSortByDeadline(&left_half);
+    mergeSortByDeadline(&right_half);
 
     // Merge the sorted halves
-    *active_dd_tasks_ptr = mergeByDeadline(left_half, right_half);
+    *active_dd_tasks_ptr = mergeLists(left_half, right_half);
 }
 
 
