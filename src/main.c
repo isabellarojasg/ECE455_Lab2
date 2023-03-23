@@ -169,9 +169,13 @@ static struct dd_task_list* get_completed_dd_task_list();
 static struct dd_task_list* get_overdue_dd_task_list();
 static void task1_timer_callback(TimerHandle_t xTimer);
 
+//Helper functions
 void listInsert(struct dd_task_list* head, struct dd_task new_task);
 void printList(struct dd_task_list *list);
 unsigned int getListLength(struct dd_task_list* list);
+void mergeSortByDeadline(struct dd_task_list** active_dd_tasks_ptr);
+struct dd_task_list* mergeSortedLists(struct dd_task_list* left_half, struct dd_task_list* right_half);
+int listLength(struct dd_task_list* head);
 
 TaskHandle_t generator_handle;
 
@@ -252,14 +256,7 @@ static void dds_task(void *pvParameters){
 			vTaskPrioritySet(active_dd_tasks, 1);
 			//sort active list and set priorities of user tasks
 
-
-
-
-
-
-
-
-
+			mergeSortByDeadline(&active_dd_tasks);
 			vTaskPrioritySet(active_dd_tasks, 2);
 
 			break;
@@ -351,18 +348,19 @@ static struct dd_task_list* get_overdue_dd_task_list(){
 void printList(struct dd_task_list *list){
 	struct dd_task_list *curr_task = list;
 	while(curr_task){
-		printf("task_id: %u", curr_task->task.task_id);
+		printf("task_id: %", (curr_task->task.task_id));
 		curr_task = curr_task->next_task;
 	}
 }
 
-unsigned int getListLength(struct dd_task_list *list){
-	struct dd_task_list *curr_task = list;
-	unsigned int count = 0;
-	while(curr_task){
-		count++;
-		curr_task = curr_task->next_task;
+unsigned int getListLength(struct dd_task_list *head){
+	unsigned int length = 0;
+	struct dd_task_list* current_node = head;
+	while (current_node!= NULL){
+		length ++;
+		current_node = current_node->next_task;
 	}
+	return length;
 }
 
 
@@ -381,29 +379,35 @@ void listInsert(struct dd_task_list* head, struct dd_task new_task){
 	head->next_task = temp;
 }
 
-struct dd_task_list* mergeLists(struct dd_task_list* left_half, struct dd_task_list* right_half){
+
+//Merge two sorted lists
+struct dd_task_list* mergeSortedLists(struct dd_task_list* left_half, struct dd_task_list* right_half){
+
 	struct dd_task_list* result = NULL;
 	if (left_half == NULL){
 		return right_half;
 	} else if (right_half == NULL){
 		return left_half;
 	}
-	
-	if (left_half->task->deadline <= right_half->task->deadline){
-		
+
+	if (left_half->task.absolute_deadline <= right_half->task.absolute_deadline){
+		result = left_half;
+		result->next_task = mergeSortedLists(left_half->next_task,right_half);
 	}else {
 		result = right_half;
-		result->next = mergeLists(left_half,right_half->next)
+		result->next_task = mergeSortedLists(left_half,right_half->next_task);
 	}
-	
+
+	return result;
 }
 
+//Using merge sort to sort the Linked List
 void mergeSortByDeadline(struct dd_task_list** active_dd_tasks_ptr) {
     struct dd_task_list* active_dd_tasks = *active_dd_tasks_ptr;
     struct dd_task_list* left_half;
     struct dd_task_list* right_half;
-    int list_size = listLength(active_dd_tasks);
- 
+    int list_size = getListLength(active_dd_tasks);
+
     if (list_size <= 1) {
         return;
     }
@@ -415,11 +419,13 @@ void mergeSortByDeadline(struct dd_task_list** active_dd_tasks_ptr) {
     // Split the list into two halves
     while (current != NULL) {
         if (i < middle) {
-            left_half = listInsert(left_half, current->task);
+        	//This might cause some problems
+            listInsert(left_half, current->task);
         } else {
-            right_half = listInsert(right_half, current->task);
+        	//This might cause some problems
+            listInsert(right_half, current->task);
         }
-        current = current->next;
+        current = current->next_task;
         i++;
     }
 
@@ -428,7 +434,7 @@ void mergeSortByDeadline(struct dd_task_list** active_dd_tasks_ptr) {
     mergeSortByDeadline(&right_half);
 
     // Merge the sorted halves
-    *active_dd_tasks_ptr = mergeLists(left_half, right_half);
+    *active_dd_tasks_ptr = mergeSortedLists(left_half, right_half);
 }
 
 
