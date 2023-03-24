@@ -1,119 +1,10 @@
-/*
-    FreeRTOS V9.0.0 - Copyright (C) 2016 Real Time Engineers Ltd.
-    All rights reserved
-    VISIT http://www.FreeRTOS.org TO ENSURE YOU ARE USING THE LATEST VERSION.
-    This file is part of the FreeRTOS distribution.
-    FreeRTOS is free software; you can redistribute it and/or modify it under
-    the terms of the GNU General Public License (version 2) as published by the
-    Free Software Foundation >>>> AND MODIFIED BY <<<< the FreeRTOS exception.
-    ***************************************************************************
-    >>!   NOTE: The modification to the GPL is included to allow you to     !<<
-    >>!   distribute a combined work that includes FreeRTOS without being   !<<
-    >>!   obliged to provide the source code for proprietary components     !<<
-    >>!   outside of the FreeRTOS kernel.                                   !<<
-    ***************************************************************************
-    FreeRTOS is distributed in the hope that it will be useful, but WITHOUT ANY
-    WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-    FOR A PARTICULAR PURPOSE.  Full license text is available on the following
-    link: http://www.freertos.org/a00114.html
-    ***************************************************************************
-     *                                                                       *
-     *    FreeRTOS provides completely free yet professionally developed,    *
-     *    robust, strictly quality controlled, supported, and cross          *
-     *    platform software that is more than just the market leader, it     *
-     *    is the industry's de facto standard.                               *
-     *                                                                       *
-     *    Help yourself get started quickly while simultaneously helping     *
-     *    to support the FreeRTOS project by purchasing a FreeRTOS           *
-     *    tutorial book, reference manual, or both:                          *
-     *    http://www.FreeRTOS.org/Documentation                              *
-     *                                                                       *
-    ***************************************************************************
-    http://www.FreeRTOS.org/FAQHelp.html - Having a problem?  Start by reading
-    the FAQ page "My application does not run, what could be wwrong?".  Have you
-    defined configASSERT()?
-    http://www.FreeRTOS.org/support - In return for receiving this top quality
-    embedded software for free we request you assist our global community by
-    participating in the support forum.
-    http://www.FreeRTOS.org/training - Investing in training allows your team to
-    be as productive as possible as early as possible.  Now you can receive
-    FreeRTOS training directly from Richard Barry, CEO of Real Time Engineers
-    Ltd, and the world's leading authority on the world's leading RTOS.
-    http://www.FreeRTOS.org/plus - A selection of FreeRTOS ecosystem products,
-    including FreeRTOS+Trace - an indispensable productivity tool, a DOS
-    compatible FAT file system, and our tiny thread aware UDP/IP stack.
-    http://www.FreeRTOS.org/labs - Where new FreeRTOS products go to incubate.
-    Come and try FreeRTOS+TCP, our new open source TCP/IP stack for FreeRTOS.
-    http://www.OpenRTOS.com - Real Time Engineers ltd. license FreeRTOS to High
-    Integrity Systems ltd. to sell under the OpenRTOS brand.  Low cost OpenRTOS
-    licenses offer ticketed support, indemnification and commercial middleware.
-    http://www.SafeRTOS.com - High Integrity Systems also provide a safety
-    engineered and independently SIL3 certified version for use in safety and
-    mission critical applications that require provable dependability.
-    1 tab == 4 spaces!
-*/
-
-/*
-FreeRTOS is a market leading RTOS from Real Time Engineers Ltd. that supports
-31 architectures and receives 77500 downloads a year. It is professionally
-developed, strictly quality controlled, robust, supported, and free to use in
-commercial products without any requirement to expose your proprietary source
-code.
-This simple FreeRTOS demo does not make use of any IO ports, so will execute on
-any Cortex-M3 of Cortex-M4 hardware.  Look for TODO markers in the code for
-locations that may require tailoring to, for example, include a manufacturer
-specific header file.
-This is a starter project, so only a subset of the RTOS features are
-demonstrated.  Ample source comments are provided, along with web links to
-relevant pages on the http://www.FreeRTOS.org site.
-Here is a description of the project's functionality:
-The main() Function:
-main() creates the tasks and software timers described in this section, before
-starting the scheduler.
-The Queue Send Task:
-The queue send task is implemented by the prvQueueSendTask() function.
-The task uses the FreeRTOS vTaskDelayUntil() and xQueueSend() API functions to
-periodically send the number 100 on a queue.  The period is set to 200ms.  See
-the comments in the function for more details.
-http://www.freertos.org/vtaskdelayuntil.html
-http://www.freertos.org/a00117.html
-The Queue Receive Task:
-The queue receive task is implemented by the prvQueueReceiveTask() function.
-The task uses the FreeRTOS xQueueReceive() API function to receive values from
-a queue.  The values received are those sent by the queue send task.  The queue
-receive task increments the ulCountOfItemsReceivedOnQueue variable each time it
-receives the value 100.  Therefore, as values are sent to the queue every 200ms,
-the value of ulCountOfItemsReceivedOnQueue will increase by 5 every second.
-http://www.freertos.org/a00118.html
-An example software timer:
-A software timer is created with an auto reloading period of 1000ms.  The
-timer's callback function increments the ulCountOfTimerCallbackExecutions
-variable each time it is called.  Therefore the value of
-ulCountOfTimerCallbackExecutions will count seconds.
-http://www.freertos.org/RTOS-software-timer.html
-The FreeRTOS RTOS tick hook (or callback) function:
-The tick hook function executes in the context of the FreeRTOS tick interrupt.
-The function 'gives' a semaphore every 500th time it executes.  The semaphore
-is used to synchronise with the event semaphore task, which is described next.
-The event semaphore task:
-The event semaphore task uses the FreeRTOS xSemaphoreTake() API function to
-wait for the semaphore that is given by the RTOS tick hook function.  The task
-increments the ulCountOfReceivedSemaphores variable each time the semaphore is
-received.  As the semaphore is given every 500ms (assuming a tick frequency of
-1KHz), the value of ulCountOfReceivedSemaphores will increase by 2 each second.
-The idle hook (or callback) function:
-The idle hook function queries the amount of free FreeRTOS heap space available.
-See vApplicationIdleHook().
-The malloc failed and stack overflow hook (or callback) functions:
-These two hook functions are provided as examples, but do not contain any
-functionality.
-*/
 
 /* Standard includes. */
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include "linked_task_list.h"
 #include "stm32f4_discovery.h"
 /* Kernel includes. */
 #include "stm32f4xx.h"
@@ -124,9 +15,8 @@ functionality.
 #include "../FreeRTOS_Source/include/timers.h"
 
 
-
 /*-----------------------------------------------------------*/
-#define mainQUEUE_LENGTH 1
+#define mainQUEUE_LENGTH 16
 
 /*
  * TODO: Implement this function for any hardware specific clock configuration
@@ -134,59 +24,39 @@ functionality.
  */
 static void prvSetupHardware( void );
 
-enum task_type {PERIODIC, APERIODIC};
+//enum task_type {PERIODIC, APERIODIC};
 enum message_type {NEW_TASK, COMPLETED_TASK, ACTIVE_LIST_REQ, COMP_LIST_REQ, OD_LIST_REQ};
-
-struct dd_task {
-	TaskHandle_t t_handle;
-	enum task_type type;	//is this redeclaring task_type or?
-	uint32_t task_id;
-	uint32_t release_time;
-	uint32_t absolute_deadline;
-	uint32_t completion_time;
-};
-
-struct dd_task_list {
-	struct dd_task task;	//again, should have struct here??
-	struct dd_task_list *next_task;
-};
 
 struct dds_message {
 	enum message_type type;
 	struct dd_task task;
 };
 
-/*
- * The queue send and receive tasks as described in the comments at the top of
- * this file.
- */
 static void dds_task(void *pvParameters);
-static void generator_task(void *pvParameters);
+static void generator_task1(void *pvParameters);
+static void generator_task2(void *pvParameters);
 static void monitor_task(void *pvParameters);
-static void usd_task(void *pvParameters);
-static struct dd_task_list* get_active_dd_task_list();
-static struct dd_task_list* get_completed_dd_task_list();
-static struct dd_task_list* get_overdue_dd_task_list();
+static void usd_task1(void *pvParameters);
+static void usd_task2(void *pvParameters);
+static struct dd_task_node* get_active_dd_task_list();
+static struct dd_task_node* get_completed_dd_task_list();
+static struct dd_task_node* get_overdue_dd_task_list();
 static void task1_timer_callback(TimerHandle_t xTimer);
+static void task2_timer_callback(TimerHandle_t xTimer);
 
-//Helper functions
-void listInsert(struct dd_task_list* head, struct dd_task new_task);
-void printList(struct dd_task_list *list);
-unsigned int getListLength(struct dd_task_list* list);
-void mergeSortByDeadline(struct dd_task_list** active_dd_tasks_ptr);
-struct dd_task_list* mergeSortedLists(struct dd_task_list* left_half, struct dd_task_list* right_half);
-int listLength(struct dd_task_list* head);
-
-TaskHandle_t generator_handle;
+TaskHandle_t generator_handle1;
+TaskHandle_t generator_handle2;
 
 QueueHandle_t xQueue_DDS_Messages;
 QueueHandle_t xQueue_List_Response;
 
 TimerHandle_t xTimer_Task1_Generator;
+TimerHandle_t xTimer_Task2_Generator;
 
 uint8_t active_list	= 0;
 uint8_t completed_list = 1;
 uint8_t overdue_list = 2;
+uint32_t curr_task_id = 0;
 /*-----------------------------------------------------------*/
 
 int main(void)
@@ -198,11 +68,9 @@ int main(void)
 	can be done here if it was not done before main() was called. */
 	prvSetupHardware();
 
-
-	/* Create the queue used by the queue send and queue receive tasks.
-	http://www.freertos.org/a00116.html */
+	/* Create the queues */
 	xQueue_DDS_Messages = xQueueCreate(mainQUEUE_LENGTH,	/* The number of items the queue can hold. */
-									sizeof( uint16_t ) );	/* The size of each item the queue holds. */
+									sizeof( struct dds_message ) );	/* The size of each item the queue holds. */
 	xQueue_List_Response = xQueueCreate(mainQUEUE_LENGTH,	/* The number of items the queue can hold. */
 												sizeof( uint16_t ) );	/* The size of each item the queue holds. */
 
@@ -212,17 +80,17 @@ int main(void)
 
 	//TODO:set period of timer
 	xTimer_Task1_Generator = xTimerCreate("Task1 Generation Timer", pdMS_TO_TICKS(500), pdFALSE, 0, task1_timer_callback);
+	xTimer_Task2_Generator = xTimerCreate("Task2 Generation Timer", pdMS_TO_TICKS(500), pdFALSE, 0, task2_timer_callback);
 
-	xTaskCreate( dds_task, "Deadline Driven Scheduler", configMINIMAL_STACK_SIZE, NULL, 2, NULL);
-	xTaskCreate( generator_task, "Deadline-Driven Task Generator", configMINIMAL_STACK_SIZE, NULL, 3, generator_handle);
+	xTaskCreate( dds_task, "Deadline Driven Scheduler", configMINIMAL_STACK_SIZE, NULL, 3, NULL);
+	xTaskCreate( generator_task1, "Deadline-Driven Task Generator 1", configMINIMAL_STACK_SIZE, NULL, 4, generator_handle1);
+	xTaskCreate( generator_task2, "Deadline-Driven Task Generator 2", configMINIMAL_STACK_SIZE, NULL, 4, generator_handle2);
 	xTaskCreate( monitor_task, "Monitor Task", configMINIMAL_STACK_SIZE, NULL, 1, NULL);
-//	xTaskCreate( get_active_dd_task_list, "Get active task list", configMINIMAL_STACK_SIZE, NULL, 1, NULL);
-//	xTaskCreate( get_completed_dd_task_list, "Get completed task list", configMINIMAL_STACK_SIZE, NULL, 1, NULL);
-//	xTaskCreate( get_overdue_dd_task_list, "Get overdue task list", configMINIMAL_STACK_SIZE, NULL, 1, NULL);
 
 	/* Start the tasks and timer running. */
 	vTaskStartScheduler();
 	xTimerStart(xTimer_Task1_Generator, portMAX_DELAY);
+	xTimerStart(xTimer_Task2_Generator, portMAX_DELAY);
 
 	return 0;
 }
@@ -234,17 +102,23 @@ void release_dd_task(struct dd_task new_task){
 	struct dds_message new_message;
 	new_message.type = NEW_TASK;
 	new_message.task = new_task;
+	printf("r_dd_t id: %u\n", new_task.task_id);
 	xQueueSend(xQueue_DDS_Messages, &new_message, 1000);
 }
 
 void complete_dd_task(uint32_t task_id){
-
+	struct dd_task comp_task;
+	comp_task.task_id = task_id;
+	struct dds_message new_message;
+	new_message.type = COMPLETED_TASK;
+	new_message.task = comp_task;
+	xQueueSend(xQueue_DDS_Messages, &new_message, 1000);
 }
 
 static void dds_task(void *pvParameters){
-	struct dd_task_list* active_dd_tasks = NULL;
-	struct dd_task_list* completed_dd_tasks = NULL;
-	struct dd_task_list* overdue_dd_tasks = NULL;
+	struct dd_task_node* active_dd_tasks = NULL;
+	struct dd_task_node* completed_dd_tasks = NULL;
+	struct dd_task_node* overdue_dd_tasks = NULL;
 	struct dds_message message;
 
 	for(;;){
@@ -252,19 +126,26 @@ static void dds_task(void *pvParameters){
 		switch(message.type){
 		case NEW_TASK:
 			message.task.release_time = xTaskGetTickCount();	//assign release time
-			listInsert(active_dd_tasks, message.task);	//add to active task list
-			vTaskPrioritySet(active_dd_tasks, 1);
+			listInsert(&active_dd_tasks, message.task);	//add to active task list
 			//sort active list and set priorities of user tasks
-
+			vTaskPrioritySet(active_dd_tasks->task.t_handle, 1);
 			mergeSortByDeadline(&active_dd_tasks);
-			vTaskPrioritySet(active_dd_tasks, 2);
-
+			vTaskPrioritySet(active_dd_tasks->task.t_handle, 2);
 			break;
 		case COMPLETED_TASK:
-			//assign completion time
-			//remove from active list
-			//add to completed list
+			active_dd_tasks->task.completion_time = xTaskGetTickCount();	//assign completion time. TODO: covert to ms??
+			moveTask(&active_dd_tasks, &completed_dd_tasks);	//remove from active list and add to completed list todo: should this move according to id rather than just move the one @ the front??
+
+			//remove according to id or???? shouldn't it just always be the one at the front of the list?
+			vTaskDelete(completed_dd_tasks->task.t_handle);
+
 			//sort active list and set priorities of user tasks
+			if(active_dd_tasks){
+				vTaskPrioritySet(active_dd_tasks->task.t_handle, 1);
+				mergeSortByDeadline(&active_dd_tasks);
+				vTaskPrioritySet(active_dd_tasks->task.t_handle, 2);
+			}
+
 			break;
 		case ACTIVE_LIST_REQ:
 			break;
@@ -280,20 +161,40 @@ static void dds_task(void *pvParameters){
 }
 
 static void task1_timer_callback(TimerHandle_t xTimer){
-	BaseType_t xYieldRequired = xTaskResumeFromISR(generator_handle);
+	BaseType_t xYieldRequired = xTaskResumeFromISR(generator_handle1);
 	portYIELD_FROM_ISR(xYieldRequired);
 }
 
+static void task2_timer_callback(TimerHandle_t xTimer){
+	BaseType_t xYieldRequired = xTaskResumeFromISR(generator_handle2);
+		portYIELD_FROM_ISR(xYieldRequired);
+}
 
-static void generator_task(void *pvParameters){
+
+static void generator_task1(void *pvParameters){
 	struct dd_task new_task;
 	TaskHandle_t* usd_task_handle = pvPortMalloc(sizeof(TaskHandle_t));
-	uint32_t curr_task_id = 0;
 	uint32_t task_period = pdMS_TO_TICKS(500);
 
 	for(;;){
 		new_task.task_id = curr_task_id++;
-		xTaskCreate( usd_task, "User-Defined Task", configMINIMAL_STACK_SIZE, (void *) new_task.task_id, 1, usd_task_handle);
+		xTaskCreate( usd_task1, "User-Defined Task", configMINIMAL_STACK_SIZE, (void *) new_task.task_id, 1, usd_task_handle);
+		new_task.t_handle = *usd_task_handle;
+		new_task.absolute_deadline = xTaskGetTickCount() + task_period;
+		release_dd_task(new_task);
+		vTaskSuspend(NULL);
+	}
+
+}
+
+static void generator_task2(void *pvParameters){
+	struct dd_task new_task;
+	TaskHandle_t* usd_task_handle = pvPortMalloc(sizeof(TaskHandle_t));
+	uint32_t task_period = pdMS_TO_TICKS(500);
+
+	for(;;){
+		new_task.task_id = curr_task_id++;
+		xTaskCreate( usd_task2, "User-Defined Task", configMINIMAL_STACK_SIZE, (void *) new_task.task_id, 2, usd_task_handle);
 		new_task.t_handle = *usd_task_handle;
 		new_task.absolute_deadline = xTaskGetTickCount() + task_period;
 		release_dd_task(new_task);
@@ -303,7 +204,7 @@ static void generator_task(void *pvParameters){
 }
 
 static void monitor_task(void *pvParameters){
-	struct dd_task_list *listCopy;
+	struct dd_task_node *listCopy;
 	for(;;){
 		listCopy = get_active_dd_task_list();
 		printList(listCopy);
@@ -318,125 +219,38 @@ static void monitor_task(void *pvParameters){
 	}
 }
 
-static void usd_task(void *pvParameters){
-	for(int i = 0; i < pdMS_TO_TICKS(500); i++);
-	printf("done usdt\n");
+static void usd_task1(void *pvParameters){
+	for(int i = 0; i < pdMS_TO_TICKS(95); i++);
+	printf("done usdt1\n");
 	complete_dd_task((uint32_t) pvParameters);
 }
 
-static struct dd_task_list* get_active_dd_task_list(){
-	struct dd_task_list* listCopy;
+static void usd_task2(void *pvParameters){
+	for(int i = 0; i < pdMS_TO_TICKS(150); i++);
+	printf("done usdt2\n");
+	complete_dd_task((uint32_t) pvParameters);
+}
+
+static struct dd_task_node* get_active_dd_task_list(){
+	struct dd_task_node* listCopy;
 	xQueueSend(xQueue_DDS_Messages, &active_list, 1000);
 	xQueueReceive(xQueue_List_Response, &listCopy, 1000);
 	return listCopy;
 }
 
-static struct dd_task_list* get_completed_dd_task_list(){
-	struct dd_task_list* listCopy;
+static struct dd_task_node* get_completed_dd_task_list(){
+	struct dd_task_node* listCopy;
 	xQueueSend(xQueue_DDS_Messages, &completed_list, 1000);
 	xQueueReceive(xQueue_List_Response, &listCopy, 1000);
 	return listCopy;
 }
 
-static struct dd_task_list* get_overdue_dd_task_list(){
-	struct dd_task_list* listCopy;
+static struct dd_task_node* get_overdue_dd_task_list(){
+	struct dd_task_node* listCopy;
 	xQueueSend(xQueue_DDS_Messages, &overdue_list, 1000);
 	xQueueReceive(xQueue_List_Response, &listCopy, 1000);
 	return listCopy;
 }
-
-void printList(struct dd_task_list *list){
-	struct dd_task_list *curr_task = list;
-	while(curr_task){
-		printf("task_id: %", (curr_task->task.task_id));
-		curr_task = curr_task->next_task;
-	}
-}
-
-unsigned int getListLength(struct dd_task_list *head){
-	unsigned int length = 0;
-	struct dd_task_list* current_node = head;
-	while (current_node!= NULL){
-		length ++;
-		current_node = current_node->next_task;
-	}
-	return length;
-}
-
-
-//insert front
-void listInsert(struct dd_task_list* head, struct dd_task new_task){
-	if (head == NULL) {
-		head = pvPortMalloc(sizeof(struct dd_task_list));
-		head->task = new_task;
-		head->next_task = NULL;
-		return;
-	}
-	struct dd_task_list* temp = pvPortMalloc(sizeof(struct dd_task_list));
-	temp->task = head->task;
-	temp->next_task = head->next_task;
-	head->task = new_task;
-	head->next_task = temp;
-}
-
-
-//Merge two sorted lists
-struct dd_task_list* mergeSortedLists(struct dd_task_list* left_half, struct dd_task_list* right_half){
-
-	struct dd_task_list* result = NULL;
-	if (left_half == NULL){
-		return right_half;
-	} else if (right_half == NULL){
-		return left_half;
-	}
-
-	if (left_half->task.absolute_deadline <= right_half->task.absolute_deadline){
-		result = left_half;
-		result->next_task = mergeSortedLists(left_half->next_task,right_half);
-	}else {
-		result = right_half;
-		result->next_task = mergeSortedLists(left_half,right_half->next_task);
-	}
-
-	return result;
-}
-
-//Using merge sort to sort the Linked List
-void mergeSortByDeadline(struct dd_task_list** active_dd_tasks_ptr) {
-    struct dd_task_list* active_dd_tasks = *active_dd_tasks_ptr;
-    struct dd_task_list* left_half;
-    struct dd_task_list* right_half;
-    int list_size = getListLength(active_dd_tasks);
-
-    if (list_size <= 1) {
-        return;
-    }
-
-    int middle = list_size / 2;
-    struct dd_task_list* current = active_dd_tasks;
-    int i = 0;
-
-    // Split the list into two halves
-    while (current != NULL) {
-        if (i < middle) {
-        	//This might cause some problems
-            listInsert(left_half, current->task);
-        } else {
-        	//This might cause some problems
-            listInsert(right_half, current->task);
-        }
-        current = current->next_task;
-        i++;
-    }
-
-    // Recursively sort the two halves
-    mergeSortByDeadline(&left_half);
-    mergeSortByDeadline(&right_half);
-
-    // Merge the sorted halves
-    *active_dd_tasks_ptr = mergeSortedLists(left_half, right_half);
-}
-
 
 /*-----------------------------------------------------------*/
 
