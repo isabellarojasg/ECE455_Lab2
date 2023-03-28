@@ -83,13 +83,13 @@ int main(void)
 	xTimer_Task2_Generator = xTimerCreate("Task2 Generation Timer", pdMS_TO_TICKS(500), pdFALSE, 0, task2_timer_callback);
 
 	xTaskCreate( dds_task, "Deadline Driven Scheduler", configMINIMAL_STACK_SIZE, NULL, 3, NULL);
-	xTaskCreate( generator_task1, "Deadline-Driven Task Generator 1", configMINIMAL_STACK_SIZE, NULL, 4, generator_handle1);
-	xTaskCreate( generator_task2, "Deadline-Driven Task Generator 2", configMINIMAL_STACK_SIZE, NULL, 4, generator_handle2);
+	xTaskCreate( generator_task1, "1Deadline-Driven Task Generator 1", configMINIMAL_STACK_SIZE, NULL, 4, generator_handle1);
+	xTaskCreate( generator_task2, "2Deadline-Driven Task Generator 2", configMINIMAL_STACK_SIZE, NULL, 4, generator_handle2);
 	xTaskCreate( monitor_task, "Monitor Task", configMINIMAL_STACK_SIZE, NULL, 1, NULL);
 
 	/* Start the tasks and timer running. */
 	vTaskStartScheduler();
-	xTimerStart(xTimer_Task1_Generator, portMAX_DELAY);
+	xTimerStart(xTimer_Task1_Generator, portMAX_DELAY); //blocks until timer starts running
 	xTimerStart(xTimer_Task2_Generator, portMAX_DELAY);
 
 	return 0;
@@ -133,12 +133,11 @@ static void dds_task(void *pvParameters){
 					new_task_node->next_task = NULL;
 
 					if(active_dd_tasks) vTaskPrioritySet(active_dd_tasks->task.t_handle, 1);
-
 					listInsert(&active_dd_tasks, &new_task_node);	//add to active task list
 
 					//sort active list and set priorities of user tasks
 					//vTaskPrioritySet(active_dd_tasks->task.t_handle, 1);
-					mergeSortByDeadline(&active_dd_tasks);
+					sort_active_dd_tasks(&active_dd_tasks);
 					vTaskPrioritySet(active_dd_tasks->task.t_handle, 2);
 					break;
 				case COMPLETED_TASK:
@@ -151,7 +150,7 @@ static void dds_task(void *pvParameters){
 					//sort active list and set priorities of user tasks
 					if(active_dd_tasks){
 						vTaskPrioritySet(active_dd_tasks->task.t_handle, 1); //not necessary if assuming that task at front of active list is always the one that completed
-						mergeSortByDeadline(&active_dd_tasks);
+						sort_active_dd_tasks(&active_dd_tasks);
 						vTaskPrioritySet(active_dd_tasks->task.t_handle, 2);
 					}
 			//printf("", (active_dd_tasks->task.t_handle))
@@ -191,6 +190,7 @@ static void generator_task1(void *pvParameters){
 		xTaskCreate( usd_task1, "User-Defined Task", configMINIMAL_STACK_SIZE, (void *) new_task.task_id, 1, usd_task_handle);
 		new_task.t_handle = *usd_task_handle;
 		new_task.absolute_deadline = xTaskGetTickCount() + task_period;
+		printf("first task released to queue");
 		release_dd_task(new_task);
 		vTaskSuspend(NULL);
 	}
@@ -207,6 +207,7 @@ static void generator_task2(void *pvParameters){
 		xTaskCreate( usd_task2, "User-Defined Task", configMINIMAL_STACK_SIZE, (void *) new_task.task_id, 1, usd_task_handle);
 		new_task.t_handle = *usd_task_handle;
 		new_task.absolute_deadline = xTaskGetTickCount() + task_period;
+		printf("second task released to queue");
 		release_dd_task(new_task);
 		vTaskSuspend(NULL);
 	}
@@ -326,3 +327,4 @@ static void prvSetupHardware( void )
 	/* TODO: Setup the clocks, etc. here, if they were not configured before
 	main() was called. */
 }
+
