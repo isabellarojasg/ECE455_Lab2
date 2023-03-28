@@ -1,4 +1,5 @@
 /*
+/*
  * linked_task_list.c
  *
  *  Created on: Mar 23, 2023
@@ -139,3 +140,21 @@ void mergeSortByDeadline(struct dd_task_node** active_dd_tasks_ptr) {
     // Merge the sorted halves
     *active_dd_tasks_ptr = mergeSortedLists(left_half, right_half);
 }
+
+void sort_active_dd_tasks(struct dd_task_node **active_dd_tasks) {
+    int i, j;
+    struct dd_task_node *temp;
+
+    unsigned int l = getListLength(*active_dd_tasks);
+    for (i = 0; i < l; i++) {
+        for (j = 0; j < l - i - 1; j++) {
+            if (active_dd_tasks[j]->task.release_time > active_dd_tasks[j+1]->task.release_time) {
+                // swap nodes
+                temp = active_dd_tasks[j];
+                active_dd_tasks[j] = active_dd_tasks[j+1];
+                active_dd_tasks[j+1] = temp;
+            }
+        }
+    }
+}
+
