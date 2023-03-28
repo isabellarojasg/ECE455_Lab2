@@ -29,10 +29,12 @@ struct dd_task_node {
 	struct dd_task_node *next_task;
 };
 
-void listInsert(struct dd_task_node** head, struct dd_task new_task);
+//void listInsert(struct dd_task_node** head, struct dd_task new_task);
+void listInsert(struct dd_task_node** head, struct dd_task_node** new_task);
 void moveTask(struct dd_task_node** list_head, struct dd_task_node** new_list_head);
 void printList(struct dd_task_node *list);
 unsigned int getListLength(struct dd_task_node* list);
+void frontBackSplit(struct dd_task_node* head, struct dd_task_node** left_half, struct dd_task_node** right_half);
 void mergeSortByDeadline(struct dd_task_node** active_dd_tasks_ptr);
 struct dd_task_node* mergeSortedLists(struct dd_task_node* left_half, struct dd_task_node* right_half);
 int listLength(struct dd_task_node* head);
