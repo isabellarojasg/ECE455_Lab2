@@ -38,5 +38,6 @@ void frontBackSplit(struct dd_task_node* head, struct dd_task_node** left_half, 
 void mergeSortByDeadline(struct dd_task_node** active_dd_tasks_ptr);
 struct dd_task_node* mergeSortedLists(struct dd_task_node* left_half, struct dd_task_node* right_half);
 int listLength(struct dd_task_node* head);
+void sort_active_dd_tasks(struct dd_task_node **active_dd_tasks) ;
 
 #endif /* LINKED_TASK_LIST_H_ */
