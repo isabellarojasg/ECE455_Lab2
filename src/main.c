@@ -120,42 +120,52 @@ static void dds_task(void *pvParameters){
 	struct dd_task_node* completed_dd_tasks = NULL;
 	struct dd_task_node* overdue_dd_tasks = NULL;
 	struct dds_message message;
+	BaseType_t xStatus;
 
 	for(;;){
-		xQueueReceive(xQueue_DDS_Messages, &message, 1000); //check new_task queue
-		switch(message.type){
-		case NEW_TASK:
-			message.task.release_time = xTaskGetTickCount();	//assign release time
-			listInsert(&active_dd_tasks, message.task);	//add to active task list
-			//sort active list and set priorities of user tasks
-			vTaskPrioritySet(active_dd_tasks->task.t_handle, 1);
-			mergeSortByDeadline(&active_dd_tasks);
-			vTaskPrioritySet(active_dd_tasks->task.t_handle, 2);
-			break;
-		case COMPLETED_TASK:
-			active_dd_tasks->task.completion_time = xTaskGetTickCount();	//assign completion time. TODO: covert to ms??
-			moveTask(&active_dd_tasks, &completed_dd_tasks);	//remove from active list and add to completed list todo: should this move according to id rather than just move the one @ the front??
+		xStatus = xQueueReceive(xQueue_DDS_Messages, &message, 1000); //check new_task queue
+		if(xStatus == pdPASS){
+			switch(message.type){
+				case NEW_TASK:
+					message.task.release_time = xTaskGetTickCount();	//assign release time
+					struct dd_task_node* new_task_node = pvPortMalloc(sizeof(struct dd_task_node));
+					new_task_node->task = message.task;
+					new_task_node->next_task = NULL;
 
-			//remove according to id or???? shouldn't it just always be the one at the front of the list?
-			vTaskDelete(completed_dd_tasks->task.t_handle);
+					if(active_dd_tasks) vTaskPrioritySet(active_dd_tasks->task.t_handle, 1);
 
-			//sort active list and set priorities of user tasks
-			if(active_dd_tasks){
-				vTaskPrioritySet(active_dd_tasks->task.t_handle, 1);
-				mergeSortByDeadline(&active_dd_tasks);
-				vTaskPrioritySet(active_dd_tasks->task.t_handle, 2);
+					listInsert(&active_dd_tasks, &new_task_node);	//add to active task list
+
+					//sort active list and set priorities of user tasks
+					//vTaskPrioritySet(active_dd_tasks->task.t_handle, 1);
+					mergeSortByDeadline(&active_dd_tasks);
+					vTaskPrioritySet(active_dd_tasks->task.t_handle, 2);
+					break;
+				case COMPLETED_TASK:
+					active_dd_tasks->task.completion_time = xTaskGetTickCount();	//assign completion time. TODO: covert to ms??
+					moveTask(&active_dd_tasks, &completed_dd_tasks);	//remove from active list and add to completed list todo: should this move according to id rather than just move the one @ the front??
+
+					//remove according to id or???? shouldn't it just always be the one at the front of the list?
+					vTaskDelete(completed_dd_tasks->task.t_handle);
+
+					//sort active list and set priorities of user tasks
+					if(active_dd_tasks){
+						vTaskPrioritySet(active_dd_tasks->task.t_handle, 1); //not necessary if assuming that task at front of active list is always the one that completed
+						mergeSortByDeadline(&active_dd_tasks);
+						vTaskPrioritySet(active_dd_tasks->task.t_handle, 2);
+					}
+			//printf("", (active_dd_tasks->task.t_handle))
+					break;
+				case ACTIVE_LIST_REQ:
+					break;
+				case COMP_LIST_REQ:
+					break;
+				case OD_LIST_REQ:
+					break;
+				default:
+					//error
+					printf("error\n");
 			}
-
-			break;
-		case ACTIVE_LIST_REQ:
-			break;
-		case COMP_LIST_REQ:
-			break;
-		case OD_LIST_REQ:
-			break;
-		default:
-			//error
-			printf("error\n");
 		}
 	}
 }
@@ -194,7 +204,7 @@ static void generator_task2(void *pvParameters){
 
 	for(;;){
 		new_task.task_id = curr_task_id++;
-		xTaskCreate( usd_task2, "User-Defined Task", configMINIMAL_STACK_SIZE, (void *) new_task.task_id, 2, usd_task_handle);
+		xTaskCreate( usd_task2, "User-Defined Task", configMINIMAL_STACK_SIZE, (void *) new_task.task_id, 1, usd_task_handle);
 		new_task.t_handle = *usd_task_handle;
 		new_task.absolute_deadline = xTaskGetTickCount() + task_period;
 		release_dd_task(new_task);
@@ -220,15 +230,20 @@ static void monitor_task(void *pvParameters){
 }
 
 static void usd_task1(void *pvParameters){
-	for(int i = 0; i < pdMS_TO_TICKS(95); i++);
-	printf("done usdt1\n");
-	complete_dd_task((uint32_t) pvParameters);
+	for(;;){
+		for(int i = 0; i < pdMS_TO_TICKS(95); i++);
+		printf("done usdt1\n");
+		complete_dd_task((uint32_t) pvParameters);
+	}
+
 }
 
 static void usd_task2(void *pvParameters){
-	for(int i = 0; i < pdMS_TO_TICKS(150); i++);
-	printf("done usdt2\n");
-	complete_dd_task((uint32_t) pvParameters);
+	for(;;){
+		for(int i = 0; i < pdMS_TO_TICKS(150); i++);
+		printf("done usdt2\n");
+		complete_dd_task((uint32_t) pvParameters);
+	}
 }
 
 static struct dd_task_node* get_active_dd_task_list(){
