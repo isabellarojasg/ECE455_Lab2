@@ -32,17 +32,10 @@ unsigned int getListLength(struct dd_task_node *head){
 //insert front
 void listInsert(struct dd_task_node** head, struct dd_task_node** new_task){
 	if ((*head) == NULL) {
-		//(*head) = pvPortMalloc(sizeof(struct dd_task_node));
-		//(*head)->task = new_task;
-		//(*head)->next_task = NULL;
 		(*head) = (*new_task);
 		printList(*head);
 		return;
 	}
-	//struct dd_task_node* temp = pvPortMalloc(sizeof(struct dd_task_node));
-	//temp->task = new_task;
-	//temp->next_task = *head;
-	//*head = temp;
 	(*new_task)->next_task = *head;
 	*head = *new_task;
 	printList(*head);
@@ -107,30 +100,11 @@ void mergeSortByDeadline(struct dd_task_node** active_dd_tasks_ptr) {
     struct dd_task_node* active_dd_tasks = *active_dd_tasks_ptr;
     struct dd_task_node* left_half = NULL;
     struct dd_task_node* right_half = NULL;
-    //int list_size = getListLength(active_dd_tasks);
 
-//    if (list_size <= 1) {
-//        return;
-//    }
     if(active_dd_tasks->next_task == NULL)
     	return;
 
-    //int middle = list_size / 2;
-    //struct dd_task_node* current = active_dd_tasks;
-    //int i = 0;
-
     // Split the list into two halves
-//    while (current != NULL) {
-//        if (i < middle) {
-//        	//This might cause some problems
-//            listInsert(&left_half, &current);
-//        } else {
-//        	//This might cause some problems
-//            listInsert(&right_half, &current);
-//        }
-//        current = current->next_task;
-//        i++;
-//    }
     frontBackSplit(active_dd_tasks, &left_half, &right_half);
 
     // Recursively sort the two halves

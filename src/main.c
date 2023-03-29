@@ -79,18 +79,18 @@ int main(void)
 	vQueueAddToRegistry( xQueue_List_Response, "List Response Queue" );	//holds copies of the current states of the DDS task lists
 
 	//TODO:set period of timer
-	xTimer_Task1_Generator = xTimerCreate("Task1 Generation Timer", pdMS_TO_TICKS(500), pdFALSE, 0, task1_timer_callback);
-	xTimer_Task2_Generator = xTimerCreate("Task2 Generation Timer", pdMS_TO_TICKS(500), pdFALSE, 0, task2_timer_callback);
+	xTimer_Task1_Generator = xTimerCreate("Task1 Generation Timer", pdMS_TO_TICKS(500), pdTRUE, 0, task1_timer_callback);
+	xTimer_Task2_Generator = xTimerCreate("Task2 Generation Timer", pdMS_TO_TICKS(500), pdTRUE, 0, task2_timer_callback);
 
 	xTaskCreate( dds_task, "Deadline Driven Scheduler", configMINIMAL_STACK_SIZE, NULL, 3, NULL);
-	xTaskCreate( generator_task1, "1Deadline-Driven Task Generator 1", configMINIMAL_STACK_SIZE, NULL, 4, generator_handle1);
-	xTaskCreate( generator_task2, "2Deadline-Driven Task Generator 2", configMINIMAL_STACK_SIZE, NULL, 4, generator_handle2);
-	xTaskCreate( monitor_task, "Monitor Task", configMINIMAL_STACK_SIZE, NULL, 1, NULL);
+	xTaskCreate( generator_task1, "Deadline-Driven Task Generator 1", configMINIMAL_STACK_SIZE, NULL, 4, &generator_handle1);
+	xTaskCreate( generator_task2, "Deadline-Driven Task Generator 2", configMINIMAL_STACK_SIZE, NULL, 4, &generator_handle2);
+	//xTaskCreate( monitor_task, "Monitor Task", configMINIMAL_STACK_SIZE, NULL, 1, NULL);
 
 	/* Start the tasks and timer running. */
-	vTaskStartScheduler();
-	xTimerStart(xTimer_Task1_Generator, portMAX_DELAY); //blocks until timer starts running
+	xTimerStart(xTimer_Task1_Generator, portMAX_DELAY);
 	xTimerStart(xTimer_Task2_Generator, portMAX_DELAY);
+	vTaskStartScheduler();
 
 	return 0;
 }
@@ -123,7 +123,7 @@ static void dds_task(void *pvParameters){
 	BaseType_t xStatus;
 
 	for(;;){
-		xStatus = xQueueReceive(xQueue_DDS_Messages, &message, 1000); //check new_task queue
+		xStatus = xQueueReceive(xQueue_DDS_Messages, &message, portMAX_DELAY); //check new_task queue
 		if(xStatus == pdPASS){
 			switch(message.type){
 				case NEW_TASK:
@@ -131,12 +131,12 @@ static void dds_task(void *pvParameters){
 					struct dd_task_node* new_task_node = pvPortMalloc(sizeof(struct dd_task_node));
 					new_task_node->task = message.task;
 					new_task_node->next_task = NULL;
+					printf("msg:\nid: %u\nabs: %u\n", message.task.task_id, message.task.absolute_deadline);
 
 					if(active_dd_tasks) vTaskPrioritySet(active_dd_tasks->task.t_handle, 1);
 					listInsert(&active_dd_tasks, &new_task_node);	//add to active task list
 
 					//sort active list and set priorities of user tasks
-					//vTaskPrioritySet(active_dd_tasks->task.t_handle, 1);
 					sort_active_dd_tasks(&active_dd_tasks);
 					vTaskPrioritySet(active_dd_tasks->task.t_handle, 2);
 					break;
@@ -153,13 +153,15 @@ static void dds_task(void *pvParameters){
 						sort_active_dd_tasks(&active_dd_tasks);
 						vTaskPrioritySet(active_dd_tasks->task.t_handle, 2);
 					}
-			//printf("", (active_dd_tasks->task.t_handle))
 					break;
 				case ACTIVE_LIST_REQ:
+					xQueueSend(xQueue_List_Response, &active_dd_tasks, 500);
 					break;
 				case COMP_LIST_REQ:
+					xQueueSend(xQueue_List_Response, &completed_dd_tasks, 500);
 					break;
 				case OD_LIST_REQ:
+					xQueueSend(xQueue_List_Response, &overdue_dd_tasks, 500);
 					break;
 				default:
 					//error
@@ -176,7 +178,7 @@ static void task1_timer_callback(TimerHandle_t xTimer){
 
 static void task2_timer_callback(TimerHandle_t xTimer){
 	BaseType_t xYieldRequired = xTaskResumeFromISR(generator_handle2);
-		portYIELD_FROM_ISR(xYieldRequired);
+	portYIELD_FROM_ISR(xYieldRequired);
 }
 
 
@@ -190,7 +192,6 @@ static void generator_task1(void *pvParameters){
 		xTaskCreate( usd_task1, "User-Defined Task", configMINIMAL_STACK_SIZE, (void *) new_task.task_id, 1, usd_task_handle);
 		new_task.t_handle = *usd_task_handle;
 		new_task.absolute_deadline = xTaskGetTickCount() + task_period;
-		printf("first task released to queue");
 		release_dd_task(new_task);
 		vTaskSuspend(NULL);
 	}
@@ -207,7 +208,6 @@ static void generator_task2(void *pvParameters){
 		xTaskCreate( usd_task2, "User-Defined Task", configMINIMAL_STACK_SIZE, (void *) new_task.task_id, 1, usd_task_handle);
 		new_task.t_handle = *usd_task_handle;
 		new_task.absolute_deadline = xTaskGetTickCount() + task_period;
-		printf("second task released to queue");
 		release_dd_task(new_task);
 		vTaskSuspend(NULL);
 	}
@@ -249,21 +249,27 @@ static void usd_task2(void *pvParameters){
 
 static struct dd_task_node* get_active_dd_task_list(){
 	struct dd_task_node* listCopy;
-	xQueueSend(xQueue_DDS_Messages, &active_list, 1000);
+	struct dds_message new_msg;
+	new_msg.type = ACTIVE_LIST_REQ;
+	xQueueSend(xQueue_DDS_Messages, &new_msg, 1000);
 	xQueueReceive(xQueue_List_Response, &listCopy, 1000);
 	return listCopy;
 }
 
 static struct dd_task_node* get_completed_dd_task_list(){
 	struct dd_task_node* listCopy;
-	xQueueSend(xQueue_DDS_Messages, &completed_list, 1000);
+	struct dds_message new_msg;
+	new_msg.type = COMP_LIST_REQ;
+	xQueueSend(xQueue_DDS_Messages, &new_msg, 1000);
 	xQueueReceive(xQueue_List_Response, &listCopy, 1000);
 	return listCopy;
 }
 
 static struct dd_task_node* get_overdue_dd_task_list(){
 	struct dd_task_node* listCopy;
-	xQueueSend(xQueue_DDS_Messages, &overdue_list, 1000);
+	struct dds_message new_msg;
+	new_msg.type = OD_LIST_REQ;
+	xQueueSend(xQueue_DDS_Messages, &new_msg, 1000);
 	xQueueReceive(xQueue_List_Response, &listCopy, 1000);
 	return listCopy;
 }
@@ -327,4 +333,3 @@ static void prvSetupHardware( void )
 	/* TODO: Setup the clocks, etc. here, if they were not configured before
 	main() was called. */
 }
-
