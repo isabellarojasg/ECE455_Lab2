@@ -38,8 +38,8 @@ static void monitor_task(void *pvParameters);
 static void usd_task1(void *pvParameters);
 static void usd_task2(void *pvParameters);
 void get_active_dd_task_list(struct dd_task_node** listCopy);
-static struct dd_task_node* get_completed_dd_task_list();
-static struct dd_task_node* get_overdue_dd_task_list();
+void get_completed_dd_task_list(struct dd_task_node** listCopy);
+void get_overdue_dd_task_list(struct dd_task_node** listCopy);
 static void task1_timer_callback(TimerHandle_t xTimer);
 static void task2_timer_callback(TimerHandle_t xTimer);
 
