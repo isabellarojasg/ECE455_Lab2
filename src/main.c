@@ -1,4 +1,3 @@
-
 /* Standard includes. */
 #include <stdint.h>
 #include <stdio.h>
@@ -38,7 +37,7 @@ static void generator_task2(void *pvParameters);
 static void monitor_task(void *pvParameters);
 static void usd_task1(void *pvParameters);
 static void usd_task2(void *pvParameters);
-static struct dd_task_node* get_active_dd_task_list();
+void get_active_dd_task_list(struct dd_task_node** listCopy);
 static struct dd_task_node* get_completed_dd_task_list();
 static struct dd_task_node* get_overdue_dd_task_list();
 static void task1_timer_callback(TimerHandle_t xTimer);
@@ -72,7 +71,7 @@ int main(void)
 	xQueue_DDS_Messages = xQueueCreate(mainQUEUE_LENGTH,	/* The number of items the queue can hold. */
 									sizeof( struct dds_message ) );	/* The size of each item the queue holds. */
 	xQueue_List_Response = xQueueCreate(mainQUEUE_LENGTH,	/* The number of items the queue can hold. */
-												sizeof( uint16_t ) );	/* The size of each item the queue holds. */
+												sizeof( struct dd_task_node* ) );	/* The size of each item the queue holds. */
 
 	/* Add to the registry, for the benefit of kernel aware debugging. */
 	vQueueAddToRegistry( xQueue_DDS_Messages, "DDS Message Queue" );	//holds messages for DDS to schedule
@@ -85,7 +84,7 @@ int main(void)
 	xTaskCreate( dds_task, "Deadline Driven Scheduler", configMINIMAL_STACK_SIZE, NULL, 3, NULL);
 	xTaskCreate( generator_task1, "Deadline-Driven Task Generator 1", configMINIMAL_STACK_SIZE, NULL, 4, &generator_handle1);
 	xTaskCreate( generator_task2, "Deadline-Driven Task Generator 2", configMINIMAL_STACK_SIZE, NULL, 4, &generator_handle2);
-	//xTaskCreate( monitor_task, "Monitor Task", configMINIMAL_STACK_SIZE, NULL, 1, NULL);
+	xTaskCreate( monitor_task, "Monitor Task", configMINIMAL_STACK_SIZE, NULL, 1, NULL);
 
 	/* Start the tasks and timer running. */
 	xTimerStart(xTimer_Task1_Generator, portMAX_DELAY);
@@ -131,7 +130,7 @@ static void dds_task(void *pvParameters){
 					struct dd_task_node* new_task_node = pvPortMalloc(sizeof(struct dd_task_node));
 					new_task_node->task = message.task;
 					new_task_node->next_task = NULL;
-					printf("msg:\nid: %u\nabs: %u\n", message.task.task_id, message.task.absolute_deadline);
+				//	printf("msg:\nid: %u\nabs: %u\n", message.task.task_id, message.task.absolute_deadline);
 
 					if(active_dd_tasks) vTaskPrioritySet(active_dd_tasks->task.t_handle, 1);
 					listInsert(&active_dd_tasks, &new_task_node);	//add to active task list
@@ -217,15 +216,15 @@ static void generator_task2(void *pvParameters){
 static void monitor_task(void *pvParameters){
 	struct dd_task_node *listCopy;
 	for(;;){
-		listCopy = get_active_dd_task_list();
+		get_active_dd_task_list(&listCopy);
 		printList(listCopy);
 		printf("active list len: %u\n", getListLength(listCopy));
-		listCopy = get_completed_dd_task_list();
-		printList(listCopy);
-		printf("comp list len: %u\n", getListLength(listCopy));
-		listCopy = get_overdue_dd_task_list();
-		printList(listCopy);
-		printf("od list len: %u\n", getListLength(listCopy));
+//		listCopy = get_completed_dd_task_list();
+//		printList(listCopy);
+//		printf("comp list len: %u\n", getListLength(listCopy));
+//		listCopy = get_overdue_dd_task_list();
+//		printList(listCopy);
+//		printf("od list len: %u\n", getListLength(listCopy));
 		vTaskDelay(pdMS_TO_TICKS(10000));
 	}
 }
@@ -247,31 +246,25 @@ static void usd_task2(void *pvParameters){
 	}
 }
 
-static struct dd_task_node* get_active_dd_task_list(){
-	struct dd_task_node* listCopy;
+void get_active_dd_task_list(struct dd_task_node** listCopy){
 	struct dds_message new_msg;
 	new_msg.type = ACTIVE_LIST_REQ;
 	xQueueSend(xQueue_DDS_Messages, &new_msg, 1000);
-	xQueueReceive(xQueue_List_Response, &listCopy, 1000);
-	return listCopy;
+	xQueueReceive(xQueue_List_Response, &(*listCopy), 1000);
 }
 
-static struct dd_task_node* get_completed_dd_task_list(){
-	struct dd_task_node* listCopy;
+void get_completed_dd_task_list(static struct dd_task_node** listCopy){
 	struct dds_message new_msg;
 	new_msg.type = COMP_LIST_REQ;
 	xQueueSend(xQueue_DDS_Messages, &new_msg, 1000);
-	xQueueReceive(xQueue_List_Response, &listCopy, 1000);
-	return listCopy;
+	xQueueReceive(xQueue_List_Response, &(*listCopy), 1000);
 }
 
-static struct dd_task_node* get_overdue_dd_task_list(){
-	struct dd_task_node* listCopy;
+void get_overdue_dd_task_list(static struct dd_task_node** listCopy){
 	struct dds_message new_msg;
 	new_msg.type = OD_LIST_REQ;
 	xQueueSend(xQueue_DDS_Messages, &new_msg, 1000);
-	xQueueReceive(xQueue_List_Response, &listCopy, 1000);
-	return listCopy;
+	xQueueReceive(xQueue_List_Response, &(*listCopy), 1000);
 }
 
 /*-----------------------------------------------------------*/
