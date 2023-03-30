@@ -17,13 +17,20 @@
 /*-----------------------------------------------------------*/
 #define mainQUEUE_LENGTH 16
 
+#define USDT1_PERIOD	500
+#define USDT2_PERIOD	500
+#define USDT3_PERIOD	750
+
+#define USDT1_EX_TIME	95
+#define USDT2_EX_TIME	150
+#define USDT3_EX_TIME	250
+
 /*
  * TODO: Implement this function for any hardware specific clock configuration
  * that was not already performed before main() was called.
  */
 static void prvSetupHardware( void );
 
-//enum task_type {PERIODIC, APERIODIC};
 enum message_type {NEW_TASK, COMPLETED_TASK, ACTIVE_LIST_REQ, COMP_LIST_REQ, OD_LIST_REQ};
 
 struct dds_message {
@@ -39,9 +46,9 @@ static void monitor_task(void *pvParameters);
 static void usd_task1(void *pvParameters);
 static void usd_task2(void *pvParameters);
 static void usd_task3(void *pvParameters);
-static struct dd_task_node* get_active_dd_task_list();
-static struct dd_task_node* get_completed_dd_task_list();
-static struct dd_task_node* get_overdue_dd_task_list();
+void get_active_dd_task_list(struct dd_task_node** listCopy);
+void get_completed_dd_task_list( struct dd_task_node** listCopy);
+void get_overdue_dd_task_list( struct dd_task_node** listCopy);
 static void task1_timer_callback(TimerHandle_t xTimer);
 static void task2_timer_callback(TimerHandle_t xTimer);
 static void task3_timer_callback(TimerHandle_t xTimer);
@@ -49,6 +56,7 @@ static void task3_timer_callback(TimerHandle_t xTimer);
 TaskHandle_t generator_handle1;
 TaskHandle_t generator_handle2;
 TaskHandle_t generator_handle3;
+TaskHandle_t monitor_task_handle;
 
 QueueHandle_t xQueue_DDS_Messages;
 QueueHandle_t xQueue_List_Response;
@@ -83,16 +91,16 @@ int main(void)
 	vQueueAddToRegistry( xQueue_List_Response, "List Response Queue" );	//holds copies of the current states of the DDS task lists
 
 	//TODO:set period of timer
-	xTimer_Task1_Generator = xTimerCreate("Task1 Generation Timer", pdMS_TO_TICKS(500), pdTRUE, 0, task1_timer_callback);
-	xTimer_Task2_Generator = xTimerCreate("Task2 Generation Timer", pdMS_TO_TICKS(500), pdTRUE, 0, task2_timer_callback);
-	xTimer_Task3_Generator = xTimerCreate("Task3 Generation Timer", pdMS_TO_TICKS(750), pdTRUE, 0, task3_timer_callback);
+	xTimer_Task1_Generator = xTimerCreate("Task1 Generation Timer", pdMS_TO_TICKS(USDT1_PERIOD), pdTRUE, 0, task1_timer_callback);
+	xTimer_Task2_Generator = xTimerCreate("Task2 Generation Timer", pdMS_TO_TICKS(USDT2_PERIOD), pdTRUE, 0, task2_timer_callback);
+	xTimer_Task3_Generator = xTimerCreate("Task3 Generation Timer", pdMS_TO_TICKS(USDT3_PERIOD), pdTRUE, 0, task3_timer_callback);
 
 
 	xTaskCreate( dds_task, "Deadline Driven Scheduler", configMINIMAL_STACK_SIZE, NULL, 3, NULL);
+	xTaskCreate( generator_task1, "DDG1", configMINIMAL_STACK_SIZE, NULL, 4, &generator_handle1);
 	xTaskCreate( generator_task2, "DDG2", configMINIMAL_STACK_SIZE, NULL, 4, &generator_handle2);
 	xTaskCreate( generator_task3, "DDG3", configMINIMAL_STACK_SIZE, NULL, 4, &generator_handle3);
-	xTaskCreate( generator_task1, "DDG1", configMINIMAL_STACK_SIZE, NULL, 4, &generator_handle1);
-	//xTaskCreate( monitor_task, "Monitor Task", configMINIMAL_STACK_SIZE, NULL, 1, NULL);
+	xTaskCreate( monitor_task, "Monitor Task", configMINIMAL_STACK_SIZE, NULL, 4, &monitor_task_handle);
 
 	/* Start the tasks and timer running. */
 	xTimerStart(xTimer_Task1_Generator, portMAX_DELAY);
@@ -110,7 +118,6 @@ void release_dd_task(struct dd_task new_task){
 	struct dds_message new_message;
 	new_message.type = NEW_TASK;
 	new_message.task = new_task;
-	printf("r_dd_t id: %u @ %u\n", new_task.task_id, xTaskGetTickCount());
 	xQueueSend(xQueue_DDS_Messages, &new_message, 1000);
 }
 
@@ -120,7 +127,6 @@ void complete_dd_task(uint32_t task_id){
 	struct dds_message new_message;
 	new_message.type = COMPLETED_TASK;
 	new_message.task = comp_task;
-	printf("c_dd_t id: %u @ %u\n", task_id, xTaskGetTickCount());
 	xQueueSend(xQueue_DDS_Messages, &new_message, 1000);
 }
 
@@ -134,34 +140,44 @@ static void dds_task(void *pvParameters){
 	for(;;){
 		xStatus = xQueueReceive(xQueue_DDS_Messages, &message, portMAX_DELAY); //check new_task queue
 		if(xStatus == pdPASS){
+
+			//check overdue
+			while(xTaskGetTickCount() > active_dd_tasks->task.absolute_deadline){
+				active_dd_tasks->task.completion_time = 0;
+				moveTask(&active_dd_tasks, &overdue_dd_tasks);
+				vTaskDelete(overdue_dd_tasks->task.t_handle);
+			}
+
 			switch(message.type){
 				case NEW_TASK:
 					message.task.release_time = xTaskGetTickCount();	//assign release time
 					struct dd_task_node* new_task_node = (struct dd_task_node*)pvPortMalloc(sizeof(struct dd_task_node));
 					new_task_node->task = message.task;
 					new_task_node->next_task = NULL;
-					//printf("msg:\nid: %u\nabs: %u\n", message.task.task_id, message.task.absolute_deadline);
 
 					if(active_dd_tasks) vTaskPrioritySet(active_dd_tasks->task.t_handle, 1);
 					listInsert(&active_dd_tasks, &new_task_node);	//add to active task list
 
 					//sort active list and set priorities of user tasks
 					mergeSortByDeadline(&active_dd_tasks);
+
 					vTaskPrioritySet(active_dd_tasks->task.t_handle, 2);
+					active_dd_tasks->task.release_time = xTaskGetTickCount();
+
 					break;
 				case COMPLETED_TASK:
-					active_dd_tasks->task.completion_time = xTaskGetTickCount();	//assign completion time. TODO: covert to ms??
-					moveTask(&active_dd_tasks, &completed_dd_tasks);	//remove from active list and add to completed list todo: should this move according to id rather than just move the one @ the front??
-
-					//remove according to id or???? shouldn't it just always be the one at the front of the list?
+					active_dd_tasks->task.completion_time = xTaskGetTickCount();	//assign completion time
+					moveTask(&active_dd_tasks, &completed_dd_tasks);	//remove from active list and add to completed list
+					completed_dd_tasks->task.completion_time = xTaskGetTickCount();
 					vTaskDelete(completed_dd_tasks->task.t_handle);
 
 					//sort active list and set priorities of user tasks
 					if(active_dd_tasks){
-						//vTaskPrioritySet(active_dd_tasks->task.t_handle, 1); //not necessary if assuming that task at front of active list is always the one that completed
 						mergeSortByDeadline(&active_dd_tasks);
 						vTaskPrioritySet(active_dd_tasks->task.t_handle, 2);
+						active_dd_tasks->task.release_time = xTaskGetTickCount();
 					}
+					vTaskResume(monitor_task_handle);
 					break;
 				case ACTIVE_LIST_REQ:
 					xQueueSend(xQueue_List_Response, &active_dd_tasks, 500);
@@ -199,13 +215,14 @@ static void task3_timer_callback(TimerHandle_t xTimer){
 static void generator_task1(void *pvParameters){
 	struct dd_task new_task;
 	TaskHandle_t* usd_task_handle = (TaskHandle_t*)pvPortMalloc(sizeof(TaskHandle_t));
-	uint32_t task_period = pdMS_TO_TICKS(500);
+	uint32_t task_period = pdMS_TO_TICKS(USDT1_PERIOD);
 
 	for(;;){
 		new_task.task_id = 1;
 		xTaskCreate( usd_task1, "UDT1", configMINIMAL_STACK_SIZE, (void *) new_task.task_id, 1, usd_task_handle);
 		new_task.t_handle = *usd_task_handle;
 		new_task.absolute_deadline = xTaskGetTickCount() + task_period;
+		new_task.type = PERIODIC;
 		release_dd_task(new_task);
 		vTaskSuspend(NULL);
 	}
@@ -215,13 +232,14 @@ static void generator_task1(void *pvParameters){
 static void generator_task2(void *pvParameters){
 	struct dd_task new_task;
 	TaskHandle_t* usd_task_handle= (TaskHandle_t*)pvPortMalloc(sizeof(TaskHandle_t));
-	uint32_t task_period = pdMS_TO_TICKS(500);
+	uint32_t task_period = pdMS_TO_TICKS(USDT2_PERIOD);
 
 	for(;;){
 		new_task.task_id = 2;
 		xTaskCreate( usd_task2, "UDT2", configMINIMAL_STACK_SIZE, (void *) new_task.task_id, 1, usd_task_handle);
 		new_task.t_handle = *usd_task_handle;
 		new_task.absolute_deadline = xTaskGetTickCount() + task_period;
+		new_task.type = PERIODIC;
 		release_dd_task(new_task);
 		vTaskSuspend(NULL);
 	}
@@ -231,13 +249,14 @@ static void generator_task2(void *pvParameters){
 static void generator_task3(void *pvParameters){
 	struct dd_task new_task;
 	TaskHandle_t* usd_task_handle = (TaskHandle_t*)pvPortMalloc(sizeof(TaskHandle_t));
-	uint32_t task_period = pdMS_TO_TICKS(750);
+	uint32_t task_period = pdMS_TO_TICKS(USDT3_PERIOD);
 
 	for(;;){
 		new_task.task_id = 3;
 		xTaskCreate( usd_task3, "UDT3", configMINIMAL_STACK_SIZE, (void *) new_task.task_id, 1, usd_task_handle);
 		new_task.t_handle = *usd_task_handle;
 		new_task.absolute_deadline = xTaskGetTickCount() + task_period;
+		new_task.type = PERIODIC;
 		release_dd_task(new_task);
 		vTaskSuspend(NULL);
 	}
@@ -247,72 +266,91 @@ static void generator_task3(void *pvParameters){
 static void monitor_task(void *pvParameters){
 	struct dd_task_node *listCopy;
 	for(;;){
-		listCopy = get_active_dd_task_list();
-		printList(listCopy);
-		printf("active list len: %u\n", getListLength(listCopy));
-		listCopy = get_completed_dd_task_list();
-		printList(listCopy);
-		printf("comp list len: %u\n", getListLength(listCopy));
-		listCopy = get_overdue_dd_task_list();
-		printList(listCopy);
-		printf("od list len: %u\n", getListLength(listCopy));
-		vTaskDelay(pdMS_TO_TICKS(10000));
+		printf("time: %u\n", xTaskGetTickCount());
+		get_active_dd_task_list(&listCopy);
+	//	printReleaseTimes(listCopy);
+		printf("a len: %u\n", getListLength(listCopy));
+		get_completed_dd_task_list(&listCopy);
+		printCompleteTimes(listCopy);
+	//	get_overdue_dd_task_list(&listCopy);
+		//printList(listCopy);
+		printf("od list len: %u\n\n", getListLength(listCopy));
+		vTaskSuspend(NULL);
 	}
 }
 
 static void usd_task1(void *pvParameters){
-	TickType_t start_time = xTaskGetTickCount();
-	uint32_t ex_time = pdMS_TO_TICKS(95);
+	TickType_t last_time = xTaskGetTickCount();
+	TickType_t new_time;
+	uint32_t ex_time = pdMS_TO_TICKS(USDT1_EX_TIME);
+	uint32_t curr_ex_time = 0;
+
 	for(;;){
-		while(xTaskGetTickCount() - start_time < ex_time);
+		while( curr_ex_time < ex_time){
+			new_time = xTaskGetTickCount();
+			if(new_time == last_time + 1){
+				curr_ex_time++;
+			}
+			last_time = new_time;
+		}
 		complete_dd_task((uint32_t) pvParameters);
 	}
-
 }
 
 static void usd_task2(void *pvParameters){
-	TickType_t start_time = xTaskGetTickCount();
-	uint32_t ex_time = pdMS_TO_TICKS(150);
+	TickType_t last_time = xTaskGetTickCount();
+	TickType_t new_time;
+	uint32_t ex_time = pdMS_TO_TICKS(USDT2_EX_TIME);
+	uint32_t curr_ex_time = 0;
 	for(;;){
-		while(xTaskGetTickCount() - start_time < ex_time);
+		while( curr_ex_time < ex_time){
+			new_time = xTaskGetTickCount();
+			if(new_time == last_time + 1){
+				curr_ex_time++;
+			}
+			last_time = new_time;
+		}
 		complete_dd_task((uint32_t) pvParameters);
 	}
 }
 
 static void usd_task3(void *pvParameters){
-	TickType_t start_time = xTaskGetTickCount();
-	uint32_t ex_time = pdMS_TO_TICKS(250);
+	TickType_t last_time = xTaskGetTickCount();
+	TickType_t new_time;
+	uint32_t ex_time = pdMS_TO_TICKS(USDT3_EX_TIME);
+	uint32_t curr_ex_time = 0;
+
 	for(;;){
-		while(xTaskGetTickCount() - start_time < ex_time);
+		while( curr_ex_time < ex_time){
+			new_time = xTaskGetTickCount();
+			if(new_time == last_time + 1){
+				curr_ex_time++;
+			}
+			last_time = new_time;
+		}
 		complete_dd_task((uint32_t) pvParameters);
 	}
 }
 
-static struct dd_task_node* get_active_dd_task_list(){
-	struct dd_task_node* listCopy;
+void get_active_dd_task_list(struct dd_task_node** listCopy){
 	struct dds_message new_msg;
 	new_msg.type = ACTIVE_LIST_REQ;
 	xQueueSend(xQueue_DDS_Messages, &new_msg, 1000);
-	xQueueReceive(xQueue_List_Response, &listCopy, 1000);
-	return listCopy;
+	xQueueReceive(xQueue_List_Response, &(*listCopy), 1000);
 }
 
-static struct dd_task_node* get_completed_dd_task_list(){
-	struct dd_task_node* listCopy;
+void get_completed_dd_task_list(struct dd_task_node** listCopy){
 	struct dds_message new_msg;
 	new_msg.type = COMP_LIST_REQ;
 	xQueueSend(xQueue_DDS_Messages, &new_msg, 1000);
-	xQueueReceive(xQueue_List_Response, &listCopy, 1000);
-	return listCopy;
+	xQueueReceive(xQueue_List_Response, &(*listCopy), 1000);
 }
 
-static struct dd_task_node* get_overdue_dd_task_list(){
-	struct dd_task_node* listCopy;
+void get_overdue_dd_task_list( struct dd_task_node** listCopy){
 	struct dds_message new_msg;
 	new_msg.type = OD_LIST_REQ;
 	xQueueSend(xQueue_DDS_Messages, &new_msg, 1000);
-	xQueueReceive(xQueue_List_Response, &listCopy, 1000);
-	return listCopy;
+	xQueueReceive(xQueue_List_Response, &(*listCopy), 1000);
 }
 
 /*-----------------------------------------------------------*/
