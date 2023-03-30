@@ -1,4 +1,3 @@
-
 /* Standard includes. */
 #include <stdint.h>
 #include <stdio.h>
@@ -86,13 +85,13 @@ int main(void)
 	//TODO:set period of timer
 	xTimer_Task1_Generator = xTimerCreate("Task1 Generation Timer", pdMS_TO_TICKS(500), pdTRUE, 0, task1_timer_callback);
 	xTimer_Task2_Generator = xTimerCreate("Task2 Generation Timer", pdMS_TO_TICKS(500), pdTRUE, 0, task2_timer_callback);
-	xTimer_Task3_Generator = xTimerCreate("Task3 Generation Timer", pdMS_TO_TICKS(500), pdTRUE, 0, task3_timer_callback);
+	xTimer_Task3_Generator = xTimerCreate("Task3 Generation Timer", pdMS_TO_TICKS(750), pdTRUE, 0, task3_timer_callback);
 
 
 	xTaskCreate( dds_task, "Deadline Driven Scheduler", configMINIMAL_STACK_SIZE, NULL, 3, NULL);
-	xTaskCreate( generator_task1, "Deadline-Driven Task Generator 1", configMINIMAL_STACK_SIZE, NULL, 4, &generator_handle1);
-	xTaskCreate( generator_task2, "Deadline-Driven Task Generator 2", configMINIMAL_STACK_SIZE, NULL, 4, &generator_handle2);
-	xTaskCreate( generator_task3, "Deadline-Driven Task Generator 3", configMINIMAL_STACK_SIZE, NULL, 4, &generator_handle3);
+	xTaskCreate( generator_task2, "DDG2", configMINIMAL_STACK_SIZE, NULL, 4, &generator_handle2);
+	xTaskCreate( generator_task3, "DDG3", configMINIMAL_STACK_SIZE, NULL, 4, &generator_handle3);
+	xTaskCreate( generator_task1, "DDG1", configMINIMAL_STACK_SIZE, NULL, 4, &generator_handle1);
 	//xTaskCreate( monitor_task, "Monitor Task", configMINIMAL_STACK_SIZE, NULL, 1, NULL);
 
 	/* Start the tasks and timer running. */
@@ -111,7 +110,7 @@ void release_dd_task(struct dd_task new_task){
 	struct dds_message new_message;
 	new_message.type = NEW_TASK;
 	new_message.task = new_task;
-	printf("r_dd_t id: %u\n", new_task.task_id);
+	printf("r_dd_t id: %u @ %u\n", new_task.task_id, xTaskGetTickCount());
 	xQueueSend(xQueue_DDS_Messages, &new_message, 1000);
 }
 
@@ -121,6 +120,7 @@ void complete_dd_task(uint32_t task_id){
 	struct dds_message new_message;
 	new_message.type = COMPLETED_TASK;
 	new_message.task = comp_task;
+	printf("c_dd_t id: %u @ %u\n", task_id, xTaskGetTickCount());
 	xQueueSend(xQueue_DDS_Messages, &new_message, 1000);
 }
 
@@ -140,7 +140,7 @@ static void dds_task(void *pvParameters){
 					struct dd_task_node* new_task_node = (struct dd_task_node*)pvPortMalloc(sizeof(struct dd_task_node));
 					new_task_node->task = message.task;
 					new_task_node->next_task = NULL;
-					printf("msg:\nid: %u\nabs: %u\n", message.task.task_id, message.task.absolute_deadline);
+					//printf("msg:\nid: %u\nabs: %u\n", message.task.task_id, message.task.absolute_deadline);
 
 					if(active_dd_tasks) vTaskPrioritySet(active_dd_tasks->task.t_handle, 1);
 					listInsert(&active_dd_tasks, &new_task_node);	//add to active task list
@@ -158,7 +158,7 @@ static void dds_task(void *pvParameters){
 
 					//sort active list and set priorities of user tasks
 					if(active_dd_tasks){
-						vTaskPrioritySet(active_dd_tasks->task.t_handle, 1); //not necessary if assuming that task at front of active list is always the one that completed
+						//vTaskPrioritySet(active_dd_tasks->task.t_handle, 1); //not necessary if assuming that task at front of active list is always the one that completed
 						mergeSortByDeadline(&active_dd_tasks);
 						vTaskPrioritySet(active_dd_tasks->task.t_handle, 2);
 					}
@@ -202,8 +202,8 @@ static void generator_task1(void *pvParameters){
 	uint32_t task_period = pdMS_TO_TICKS(500);
 
 	for(;;){
-		new_task.task_id = curr_task_id++;
-		xTaskCreate( usd_task1, "User-Defined Task", configMINIMAL_STACK_SIZE, (void *) new_task.task_id, 1, usd_task_handle);
+		new_task.task_id = 1;
+		xTaskCreate( usd_task1, "UDT1", configMINIMAL_STACK_SIZE, (void *) new_task.task_id, 1, usd_task_handle);
 		new_task.t_handle = *usd_task_handle;
 		new_task.absolute_deadline = xTaskGetTickCount() + task_period;
 		release_dd_task(new_task);
@@ -218,8 +218,8 @@ static void generator_task2(void *pvParameters){
 	uint32_t task_period = pdMS_TO_TICKS(500);
 
 	for(;;){
-		new_task.task_id = curr_task_id++;
-		xTaskCreate( usd_task2, "User-Defined Task", configMINIMAL_STACK_SIZE, (void *) new_task.task_id, 1, usd_task_handle);
+		new_task.task_id = 2;
+		xTaskCreate( usd_task2, "UDT2", configMINIMAL_STACK_SIZE, (void *) new_task.task_id, 1, usd_task_handle);
 		new_task.t_handle = *usd_task_handle;
 		new_task.absolute_deadline = xTaskGetTickCount() + task_period;
 		release_dd_task(new_task);
@@ -231,11 +231,11 @@ static void generator_task2(void *pvParameters){
 static void generator_task3(void *pvParameters){
 	struct dd_task new_task;
 	TaskHandle_t* usd_task_handle = (TaskHandle_t*)pvPortMalloc(sizeof(TaskHandle_t));
-	uint32_t task_period = pdMS_TO_TICKS(500);
+	uint32_t task_period = pdMS_TO_TICKS(750);
 
 	for(;;){
-		new_task.task_id = curr_task_id++;
-		xTaskCreate( usd_task3, "User-Defined Task", configMINIMAL_STACK_SIZE, (void *) new_task.task_id, 1, usd_task_handle);
+		new_task.task_id = 3;
+		xTaskCreate( usd_task3, "UDT3", configMINIMAL_STACK_SIZE, (void *) new_task.task_id, 1, usd_task_handle);
 		new_task.t_handle = *usd_task_handle;
 		new_task.absolute_deadline = xTaskGetTickCount() + task_period;
 		release_dd_task(new_task);
@@ -261,26 +261,29 @@ static void monitor_task(void *pvParameters){
 }
 
 static void usd_task1(void *pvParameters){
+	TickType_t start_time = xTaskGetTickCount();
+	uint32_t ex_time = pdMS_TO_TICKS(95);
 	for(;;){
-		for(int i = 0; i < pdMS_TO_TICKS(95); i++);
-		printf("done usdt1\n");
+		while(xTaskGetTickCount() - start_time < ex_time);
 		complete_dd_task((uint32_t) pvParameters);
 	}
 
 }
 
 static void usd_task2(void *pvParameters){
+	TickType_t start_time = xTaskGetTickCount();
+	uint32_t ex_time = pdMS_TO_TICKS(150);
 	for(;;){
-		for(int i = 0; i < pdMS_TO_TICKS(150); i++);
-		printf("done usdt2\n");
+		while(xTaskGetTickCount() - start_time < ex_time);
 		complete_dd_task((uint32_t) pvParameters);
 	}
 }
 
 static void usd_task3(void *pvParameters){
+	TickType_t start_time = xTaskGetTickCount();
+	uint32_t ex_time = pdMS_TO_TICKS(250);
 	for(;;){
-		for(int i = 0; i < pdMS_TO_TICKS(250); i++);
-		printf("done usdt3\n");
+		while(xTaskGetTickCount() - start_time < ex_time);
 		complete_dd_task((uint32_t) pvParameters);
 	}
 }
