@@ -1,5 +1,4 @@
 /*
-/*
  * linked_task_list.c
  *
  *  Created on: Mar 23, 2023
@@ -29,17 +28,34 @@ unsigned int getListLength(struct dd_task_node *head){
 }
 
 
-//insert front
+////insert front
+//void insertFront(struct dd_task_node** head, struct dd_task_node** new_task){
+//	if ((*head) == NULL) {
+//		(*head) = (*new_task);
+//	//	printList(*head);
+//		return;
+//	}
+//	(*new_task)->next_task = *head;
+//	*head = *new_task;
+//	//printList(*head);
+//}
+
+//insert back
 void listInsert(struct dd_task_node** head, struct dd_task_node** new_task){
 	if ((*head) == NULL) {
 		(*head) = (*new_task);
-		printList(*head);
+	//	printList(*head);
 		return;
 	}
-	(*new_task)->next_task = *head;
-	*head = *new_task;
-	printList(*head);
+	struct dd_task_node *lastNode = *head;
+
+    while(lastNode->next_task != NULL){
+    	lastNode = lastNode->next_task;
+    }
+
+    lastNode->next_task = *new_task;
 }
+
 
 //move task from front of one list to front of other list
 void moveTask(struct dd_task_node** list_head, struct dd_task_node** new_list_head){
@@ -67,7 +83,6 @@ struct dd_task_node* mergeSortedLists(struct dd_task_node* left_half, struct dd_
 		result = right_half;
 		result->next_task = mergeSortedLists(left_half,right_half->next_task);
 	}
-
 	return result;
 }
 
@@ -131,4 +146,3 @@ void sort_active_dd_tasks(struct dd_task_node **active_dd_tasks) {
         }
     }
 }
-
